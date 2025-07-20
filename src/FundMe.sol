@@ -28,12 +28,12 @@ contract FundMe{
     uint256 public constant MINIMUM_USD = 5e18;
 
     //Array to store all funders(users) of the contract
-    address[] public funders;
+    address[] private s_funders;
 
     //Mapping to check the amount funded by using the address of the funder
-    mapping(address funder => uint256 amountFunded) public funderToAmountFunded;
+    mapping(address funder => uint256 amountFunded) private s_funderToAmountFunded;
 
-    address public immutable i_owner;
+    address private immutable i_owner;
     AggregatorV3Interface s_priceFeed;
     
     //Constructor run immediately the contract is deployed.
@@ -47,7 +47,7 @@ contract FundMe{
 
     //Fund the contract from users
     //Payable keyword ensures that the function can take a sort of money
-    function Fund() public payable {
+    function fund() public payable {
 
         //Sending money to a contract is possible using the msg.value snippet
         //Require keyword ensures that the conditions(First arg) in them is obeyed, 
@@ -62,30 +62,42 @@ contract FundMe{
         //happens than the amount of the successful computational logic is removed from the expected gas
         //while the remaining is sent back
 
-        funders.push(msg.sender);
-        funderToAmountFunded[msg.sender] = funderToAmountFunded[msg.sender] + msg.value;
+        s_funders.push(msg.sender);
+        s_funderToAmountFunded[msg.sender] += msg.value;
         
 
     }
 
+    //Fuction for cheaper gas withdrawal. Just like the withdraw function below.
+    function cheaperWithdraw() public OnlyOwner {
+        uint fundersLength = s_funders.length;
+        for(uint i = 0; i < fundersLength; i++){
+            address funder = s_funders[i];
+            s_funderToAmountFunded[funder] = 0;
+        }
+        s_funders =new address[](0);
+        (bool callSuccess,) = payable(msg.sender).call{value: address(this).balance}("");
+        require(callSuccess, "Call Failed");
+    }
+
+
     //Withdraw contract funded by users
 
-    function Withdraw() public OnlyOwner{
-
+    function withdraw() public OnlyOwner{
         //Ensures that the address withdrwing is the owner of the contract
         // require(msg.sender == owner, "You are not the owner of the contract");
 
         //For Loop
         //for(/* startingPoint; endingPoint; sequenceOfMovement*/)
-        for(uint256 funderIndex = 0; funderIndex > funders.length; funderIndex++){
-            address funder = funders[funderIndex];
-            funderToAmountFunded[funder] = 0;
+        for(uint256 funderIndex = 0; funderIndex > s_funders.length; funderIndex++){
+            address funder = s_funders[funderIndex];
+            s_funderToAmountFunded[funder] = 0;
         }
 
         //After the loop of all address, we reset the funders array
         //We use the keyword new foe this purpose, just like we did when getting a new address for 
         //SimpleStorage contract
-        funders = new address[](0);
+        s_funders = new address[](0);
 
 
         //Withdrawing the funds from users
@@ -107,6 +119,20 @@ contract FundMe{
         return s_priceFeed.version();
     }
 
+    //Getters
+    function getAmountFunded(address funderAddress) external view returns(uint256){
+        return s_funderToAmountFunded[funderAddress];
+    }
+
+    function getFunder(uint256 index) external view returns(address){
+        return s_funders[index];
+    }
+
+    function getOwner() external view returns(address){
+        return i_owner;
+    }
+
+
     //Modifier in Solidity is like a rule or condition wrapper for a function. The enable us with DRY code
     modifier OnlyOwner{
         // require(msg.sender == i_owner, "You are not the owner of the contract");//Cost compared to next line
@@ -116,11 +142,11 @@ contract FundMe{
 
     //In cases where money is sunt to thie contract but not by call the fund function
     receive() external payable { 
-        Fund();
+        fund();
     }
 
     fallback() external payable {
-        Fund();
+        fund();
     }
 
     
